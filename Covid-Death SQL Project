@@ -1,0 +1,149 @@
+/*
+========================================================
+ Covid-19 Data Exploration Project
+ Skills Used:
+ - Joins
+ - CTEs
+ - Window Functions
+ - Aggregate Functions
+ - Data Type Conversion
+ - Creating Views
+========================================================
+*/
+
+--------------------------------------------------------
+-- 1) Base Dataset (Clean & Filtered)
+--------------------------------------------------------
+WITH BaseData AS (
+    SELECT
+        continent,
+        location,
+        date,
+        population,
+        total_cases,
+        new_cases,
+        CAST(total_deaths AS int) AS total_deaths,
+        CAST(new_deaths AS int) AS new_deaths
+    FROM PortfolioProject..CovidDeaths
+    WHERE continent IS NOT NULL
+)
+
+--------------------------------------------------------
+-- 2) Total Cases vs Total Deaths
+-- Likelihood of dying if infected
+--------------------------------------------------------
+SELECT
+    location,
+    date,
+    total_cases,
+    total_deaths,
+    (total_deaths * 100.0 / total_cases) AS DeathPercentage
+FROM BaseData
+WHERE location LIKE '%states%'
+ORDER BY location, date;
+
+
+--------------------------------------------------------
+-- 3) Total Cases vs Population
+-- Percentage of population infected
+--------------------------------------------------------
+SELECT
+    location,
+    date,
+    population,
+    total_cases,
+    (total_cases * 100.0 / population) AS PercentPopulationInfected
+FROM BaseData
+ORDER BY location, date;
+
+
+--------------------------------------------------------
+-- 4) Countries with Highest Infection Rate
+--------------------------------------------------------
+SELECT
+    location,
+    population,
+    MAX(total_cases) AS HighestInfectionCount,
+    MAX(total_cases * 100.0 / population) AS PercentPopulationInfected
+FROM BaseData
+GROUP BY location, population
+ORDER BY PercentPopulationInfected DESC;
+
+
+--------------------------------------------------------
+-- 5) Countries with Highest Death Count
+--------------------------------------------------------
+SELECT
+    location,
+    MAX(total_deaths) AS TotalDeathCount
+FROM BaseData
+GROUP BY location
+ORDER BY TotalDeathCount DESC;
+
+
+--------------------------------------------------------
+-- 6) Continents with Highest Death Count
+--------------------------------------------------------
+SELECT
+    continent,
+    MAX(total_deaths) AS TotalDeathCount
+FROM BaseData
+GROUP BY continent
+ORDER BY TotalDeathCount DESC;
+
+
+--------------------------------------------------------
+-- 7) Global Numbers
+--------------------------------------------------------
+SELECT
+    SUM(new_cases) AS TotalCases,
+    SUM(new_deaths) AS TotalDeaths,
+    SUM(new_deaths) * 100.0 / SUM(new_cases) AS DeathPercentage
+FROM BaseData;
+
+
+--------------------------------------------------------
+-- 8) Population vs Vaccinations (Rolling Count)
+--------------------------------------------------------
+WITH VaccinationData AS (
+    SELECT
+        dea.continent,
+        dea.location,
+        dea.date,
+        dea.population,
+        vac.new_vaccinations,
+        SUM(CAST(vac.new_vaccinations AS int))
+            OVER (PARTITION BY dea.location ORDER BY dea.date)
+            AS RollingPeopleVaccinated
+    FROM PortfolioProject..CovidDeaths dea
+    JOIN PortfolioProject..CovidVaccinations vac
+        ON dea.location = vac.location
+        AND dea.date = vac.date
+    WHERE dea.continent IS NOT NULL
+)
+
+SELECT
+    *,
+    (RollingPeopleVaccinated * 100.0 / population) AS PercentPopulationVaccinated
+FROM VaccinationData
+ORDER BY location, date;
+
+
+--------------------------------------------------------
+-- 9) Create View for Visualization
+--------------------------------------------------------
+CREATE VIEW PercentPopulationVaccinated AS
+SELECT
+    dea.continent,
+    dea.location,
+    dea.date,
+    dea.population,
+    vac.new_vaccinations,
+    SUM(CAST(vac.new_vaccinations AS int))
+        OVER (PARTITION BY dea.location ORDER BY dea.date)
+        AS RollingPeopleVaccinated
+FROM PortfolioProject..CovidDeaths dea
+JOIN PortfolioProject..CovidVaccinations vac
+    ON dea.location = vac.location
+    AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL;
